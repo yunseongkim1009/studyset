@@ -23,14 +23,13 @@
 
   .apps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
   .app-card { padding: 22px; text-decoration: none; color: inherit; display:flex; flex-direction:column; gap:7px; position:relative; overflow:hidden; }
-  .app-card::before { content:""; position:absolute; inset:0; background:radial-gradient(120% 80% at 100% 0%, var(--accent-wash), transparent 55%); opacity:0; transition:opacity .25s; }
-  .app-card:hover::before { opacity:.7; }
   .app-card > * { position:relative; }
-  .app-card .glyph { width:50px; height:50px; border-radius:15px; display:grid; place-items:center; color:#fff;
-    background: linear-gradient(150deg, var(--accent-2), var(--accent) 60%, var(--accent-deep)); box-shadow: var(--sh-2), inset 0 1px 0 rgba(255,255,255,.3); }
-  .app-card h3 { margin:8px 0 0; font-family:var(--serif); font-size:21px; font-weight:600; letter-spacing:-.3px; }
+  .app-card .glyph { width:48px; height:48px; border-radius:10px; display:grid; place-items:center; color:#fff;
+    background: var(--accent); box-shadow: 2.5px 2.5px 0 var(--ink); }
+  .app-card:hover .glyph { background: var(--ink); }
+  .app-card h3 { margin:9px 0 0; font-family:var(--serif); font-size:21px; font-weight:600; letter-spacing:-.3px; }
   .app-card p { margin:0; color: var(--muted); font-size:14px; line-height:1.5; }
-  .app-card .app-go { margin-top:6px; display:inline-flex; align-items:center; gap:6px; font-size:13px; font-weight:600; color:var(--accent);
+  .app-card .app-go { margin-top:6px; display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.6px; color:var(--accent);
     opacity:0; transform:translateX(-4px); transition:opacity .2s, transform .2s var(--out); }
   .app-card:hover .app-go { opacity:1; transform:translateX(0); }
   .app-card .badge2 { position:absolute; right:16px; top:16px; }

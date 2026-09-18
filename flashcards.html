@@ -146,16 +146,17 @@ function renderMain() {
 function welcome() {
   const ds = decks();
   const total = ds.reduce((a, d) => a + d.cards.length, 0);
+  const due = ds.reduce((a, d) => a + d.cards.filter(isDue).length, 0);
   return `<div class="card pad fade">
-    <div class="eyebrow">Flashcards</div>
-    <h2 class="h1" style="margin:6px 0 8px">Spaced repetition that sticks.</h2>
-    <p class="lead" style="max-width:52ch">Cards you find hard come back sooner; cards you know drift into the future. Grade honestly and let the boxes do the scheduling.</p>
-    <div class="row" style="gap:10px;margin-top:16px">
-      <button class="btn primary lg" id="studyAll">Study all due</button>
+    <div class="eyebrow">${due ? "Due today" : "Review desk"}</div>
+    <h2 class="h1" style="margin:8px 0 10px">${due ? `${due} card${due>1?"s":""} ready to review` : "You're all caught up"}</h2>
+    <p class="lead" style="max-width:54ch">${due ? "Grade each card honestly — the ones you miss come back sooner, the ones you know drift further out." : "Nothing is due right now. Pick a deck on the left, or come back when cards are scheduled."}</p>
+    <div class="row" style="gap:10px;margin-top:20px">
+      <button class="btn primary lg" id="studyAll" ${due?"":"disabled"}>Review all due</button>
       <button class="btn lg" id="wNew">＋ New deck</button>
     </div>
     <div class="hr"></div>
-    <div class="muted" style="font-size:13px">${ds.length} decks · ${total} cards · pick a deck on the left to start.</div>
+    <div class="muted mono" style="font-size:13px">${ds.length} DECKS · ${total} CARDS · ${due} DUE</div>
   </div>`;
 }
 function wireWelcome() {

@@ -108,6 +108,64 @@
     Store.set("theme", next);
   }
 
+  /* ---------- shared demo seed (runs once, so every page incl. hub has data) ---------- */
+  function seedAll() {
+    if (Store.get("_seeded", false)) return;
+    const c = (front, back) => ({ id: uid("c"), front, back, box: 0, due: todayISO(), reps: 0, lapses: 0 });
+    if (!Store.get("decks", null)) Store.set("decks", [
+      { id: uid("d"), name: "Cell Biology", subject: "s_bio", cards: [
+        c("What organelle is the powerhouse of the cell?", "The mitochondrion — it produces ATP via cellular respiration."),
+        c("What is the function of ribosomes?", "Protein synthesis (translation of mRNA into polypeptides)."),
+        c("Define osmosis.", "Diffusion of water across a semipermeable membrane, from low to high solute concentration."),
+        c("What separates the nucleus from the cytoplasm?", "The nuclear envelope (a double membrane with nuclear pores)."),
+      ]},
+      { id: uid("d"), name: "SAT Vocabulary", subject: "", cards: [
+        c("Ephemeral", "Lasting a very short time; fleeting."),
+        c("Pragmatic", "Dealing with things sensibly and realistically."),
+        c("Ubiquitous", "Present, appearing, or found everywhere."),
+      ]},
+    ]);
+    if (!Store.get("quizzes", null)) Store.set("quizzes", [{
+      id: uid("q"), name: "Photosynthesis Basics", subject: "s_bio",
+      questions: [
+        { id: uid("i"), prompt: "Where in the plant cell does photosynthesis primarily occur?", options: ["Mitochondria","Chloroplast","Nucleus","Ribosome"], correct: 1 },
+        { id: uid("i"), prompt: "Which gas is released as a by-product of photosynthesis?", options: ["Carbon dioxide","Nitrogen","Oxygen","Hydrogen"], correct: 2 },
+        { id: uid("i"), prompt: "Photosynthesis converts light energy into chemical energy stored in glucose.", options: ["True","False"], correct: 0 },
+        { id: uid("i"), prompt: "What pigment gives leaves their green colour and absorbs light?", options: ["Carotene","Melanin","Chlorophyll","Xanthophyll"], correct: 2 },
+      ],
+    }]);
+    if (!Store.get("notes", null)) Store.set("notes", [{
+      id: uid("n"), title: "French Revolution — Causes", subject: "s_hist",
+      cue: "• Financial crisis?\n• Social inequality?\n• Enlightenment ideas?\n• Immediate trigger?",
+      body: "France was effectively bankrupt after costly wars (incl. American Revolution). The Three Estates system taxed the poor (Third Estate) while nobility & clergy were largely exempt.\n\nEnlightenment thinkers (Rousseau, Voltaire) spread ideas of liberty & popular sovereignty.\n\nBad harvests in 1788 spiked bread prices. The Estates-General of 1789 collapsed into the National Assembly.",
+      summary: "Bankruptcy + rigid estate inequality + Enlightenment ideas + a bread crisis converged in 1789 to spark revolution.",
+      updated: Date.now(),
+    }]);
+    if (!Store.get("exams", null)) {
+      const d9 = new Date(); d9.setDate(d9.getDate() + 9);
+      const d21 = new Date(); d21.setDate(d21.getDate() + 21);
+      Store.set("exams", [
+        { id: uid("e"), name: "Biology Midterm", subject: "s_bio", date: d9.toISOString().slice(0,10), topics: "Cells, Photosynthesis, Genetics" },
+        { id: uid("e"), name: "Calculus Test — Ch. 4", subject: "s_math", date: d21.toISOString().slice(0,10), topics: "Derivatives, Chain rule, Optimization" },
+      ]);
+    }
+    if (!Store.get("tasks", null)) Store.set("tasks", [
+      { id: uid("t"), title: "Review chapter 3 flashcards", subject: "s_bio", due: todayISO(), done: false, exam: null },
+      { id: uid("t"), title: "Do practice test #1", subject: "s_math", due: "", done: false, exam: null },
+      { id: uid("t"), title: "Summarize lecture notes", subject: "s_hist", due: "", done: true, exam: null },
+    ]);
+    if (!Store.get("sheets", null)) Store.set("sheets", [{
+      id: uid("sh"), title: "Calculus Derivative Rules", subject: "s_math", view: "read",
+      sections: [
+        { id: uid("se"), h: "Core rules", body: "**Power rule:** d/dx[xⁿ] = n·xⁿ⁻¹\n**Constant:** d/dx[c] = 0\n**Sum:** (f+g)' = f' + g'\n**Product:** (fg)' = f'g + fg'\n**Quotient:** (f/g)' = (f'g − fg')/g²", collapsed: false },
+        { id: uid("se"), h: "Chain rule", body: "d/dx[f(g(x))] = f'(g(x))·g'(x)\n\nExample: d/dx[sin(x²)] = cos(x²)·2x", collapsed: false },
+        { id: uid("se"), h: "Common derivatives", body: "d/dx[sin x] = cos x\nd/dx[cos x] = −sin x\nd/dx[eˣ] = eˣ\nd/dx[ln x] = 1/x", collapsed: false },
+      ],
+    }]);
+    subjects();
+    Store.set("_seeded", true);
+  }
+
   /* ---------- top bar ---------- */
   /* ---------- SVG line icons (Lucide-style, currentColor) ---------- */
   const ICON_PATHS = {
@@ -141,6 +199,7 @@
   ];
   function topbar(current) {
     initTheme();
+    seedAll();
     const cur = APPS.find((a) => a.id === current) || {};
     const bar = document.createElement("div");
     bar.className = "topbar";
@@ -169,7 +228,7 @@
       <div style="font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);padding:4px 8px 8px">Jump to</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
         ${APPS.map((a) => `<a href="${a.file}" style="text-decoration:none;display:flex;align-items:center;gap:9px;padding:10px 11px;border-radius:12px;border:1px solid ${a.id === current ? "var(--accent-line)" : "transparent"};background:${a.id === current ? "var(--accent-wash)" : "transparent"};transition:background .15s,border-color .15s" onmouseover="if(!this.dataset.on)this.style.background='var(--card-2)'" onmouseout="if(!this.dataset.on)this.style.background='transparent'" ${a.id === current ? 'data-on=1' : ''}>
-          <span style="width:30px;height:30px;border-radius:9px;display:grid;place-items:center;flex:none;background:${a.id === current ? "linear-gradient(150deg,var(--accent-2),var(--accent))" : "var(--card-3)"};color:${a.id === current ? "#fff" : "var(--muted)"}">${icon(a.icon, 17)}</span>
+          <span style="width:30px;height:30px;border-radius:7px;display:grid;place-items:center;flex:none;background:${a.id === current ? "var(--accent)" : "var(--card-3)"};color:${a.id === current ? "#fff" : "var(--muted)"}">${icon(a.icon, 17)}</span>
           <span style="font-weight:600;font-size:13.5px;color:var(--ink)">${a.name}</span></a>`).join("")}
       </div></div>`;
     document.body.appendChild(pop);
@@ -235,6 +294,6 @@
   window.Suite = {
     Store, uid, todayISO, daysBetween, relDay, fmtDate, fmtClock, fmtDur,
     subjects, subject, subjectName, subjectColor, addSubject, subjectSelect,
-    topbar, toast, modal, confirmDialog, toggleTheme, esc, APPS, icon,
+    topbar, toast, modal, confirmDialog, toggleTheme, esc, APPS, icon, seedAll,
   };
 })();

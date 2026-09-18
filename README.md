@@ -95,10 +95,10 @@ Each app seeds realistic demo content (biology, calculus, history) on first open
 
 ## Design & tech
 
-- **Type** — Fraunces (editorial display serif), Inter (UI), JetBrains Mono (timers & data).
-- **Look** — a warm "paper & ink" palette with an indigo accent and warm-gold highlights, layered warm shadows, subtle paper grain, and spring-based micro-interactions.
+- **Direction** — an editorial *"exam blue-book"* look: warm newsprint paper, near-black ink, a confident **navy** primary and a **brick-red "red-pen"** accent, hairline rules, flat surfaces, and hard offset "printed" shadows instead of glows.
+- **Type** — Fraunces (editorial display serif), Inter (UI), JetBrains Mono (timers, counts & tabular data).
 - **Accessible** — real focus rings, `prefers-reduced-motion` support, 4.5:1 text contrast in both themes, and a light/dark pairing designed together.
-- **Stack** — plain HTML, CSS, and JavaScript. No framework, no bundler, no dependencies. ~90 KB total.
+- **Stack** — plain HTML, CSS, and JavaScript. No framework, no bundler, no dependencies.
 
 ```
 study-suite/
