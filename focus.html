@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Focus · StudySet</title>
+<link rel="stylesheet" href="suite.css">
+<style>
+  .focus-wrap { max-width: 760px; margin: 0 auto; padding: 30px 0 60px; }
+  .dial { position: relative; width: 300px; height: 300px; margin: 8px auto 6px; }
+  .dial svg { transform: rotate(-90deg); }
+  .dial .track { fill:none; stroke: var(--line-soft); stroke-width: 14; }
+  .dial .prog { fill:none; stroke: var(--accent); stroke-width: 14; stroke-linecap: round; transition: stroke-dashoffset .4s linear, stroke .4s; }
+  .dial.break .prog { stroke: var(--green); }
+  .dial .center { position:absolute; inset:0; display:grid; place-items:center; text-align:center; }
+  .dial .time { font-family: var(--mono); font-size: 60px; font-weight: 700; letter-spacing: -1px; }
+  .dial .mode { text-transform: uppercase; letter-spacing: 3px; font-size: 12px; font-weight: 700; color: var(--muted); }
+  .controls { display: flex; gap: 12px; justify-content: center; margin: 8px 0 20px; }
+  .big-btn { width: 64px; height: 64px; border-radius: 50%; display:grid; place-items:center; font-size: 24px; }
+  .pill-row { display:flex; gap:8px; justify-content:center; flex-wrap:wrap; margin-bottom:18px; }
+  .pill { padding:6px 14px; border-radius:999px; border:1px solid var(--line); background:var(--card); cursor:pointer; font-weight:600; font-size:13px; transition:.12s; }
+  .pill.on { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+  .dots { display:flex; gap:7px; justify-content:center; margin: 4px 0 18px; }
+  .dots i { width:12px; height:12px; border-radius:50%; background:var(--line); }
+  .dots i.done { background: var(--accent); }
+  .stat-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; }
+  .stat { text-align:center; padding:16px 8px; }
+  .stat b { font-size:26px; font-family:var(--serif); display:block; }
+  .heat { display:grid; grid-template-columns:repeat(7,1fr); gap:5px; margin-top:10px; }
+  .heat i { aspect-ratio:1; border-radius:4px; background:var(--line-soft); }
+</style>
+</head>
+<body>
+<script src="suite.js"></script>
+<div class="wrap"><div class="focus-wrap">
+  <div class="pill-row" id="modes"></div>
+
+  <div class="dial" id="dial">
+    <svg width="300" height="300" viewBox="0 0 300 300">
+      <circle class="track" cx="150" cy="150" r="132"></circle>
+      <circle class="prog" cx="150" cy="150" r="132" id="prog"></circle>
+    </svg>
+    <div class="center">
+      <div class="mode" id="modeLabel">Focus</div>
+      <div class="time" id="time">25:00</div>
+      <div class="muted" id="sub" style="font-size:13px">—</div>
+    </div>
+  </div>
+
+  <div class="dots" id="dots"></div>
+
+  <div class="controls">
+    <button class="btn big-btn" id="reset" title="Reset">↺</button>
+    <button class="btn primary big-btn" id="toggle" title="Start / pause" style="width:76px;height:76px;font-size:30px">▶</button>
+    <button class="btn big-btn" id="skip" title="Skip">⏭</button>
+  </div>
+
+  <div class="card pad" style="margin-bottom:16px">
+    <div class="row" style="gap:12px;flex-wrap:wrap;align-items:flex-end">
+      <div class="field grow" style="min-width:170px"><label>What are you working on?</label><span id="subjWrap"></span></div>
+      <div class="field grow" style="min-width:170px"><label>Task (optional)</label><span id="taskWrap"></span></div>
+    </div>
+    <div id="dueHint" class="muted" style="font-size:13px;margin-top:10px"></div>
+  </div>
+
+  <div class="card pad">
+    <h3 class="h2" style="margin-bottom:12px">Your focus</h3>
+    <div class="stat-grid">
+      <div class="stat panel"><b id="stToday">0m</b><span class="muted" style="font-size:12px">today</span></div>
+      <div class="stat panel"><b id="stWeek">0h</b><span class="muted" style="font-size:12px">this week</span></div>
+      <div class="stat panel"><b id="stStreak">0</b><span class="muted" style="font-size:12px">day streak</span></div>
+    </div>
+    <div class="muted" style="font-size:12px;margin-top:16px">Last 4 weeks</div>
+    <div class="heat" id="heat"></div>
+  </div>
+</div></div>
+
+<script>
+const S=window.Suite; S.topbar("focus");
+const $=(s,r=document)=>r.querySelector(s);
+
+const PRESETS = { focus:25, short:5, long:15 };
+let settings = S.Store.get("focusSettings", { focus:25, short:5, long:15 });
+let mode="focus", running=false, remaining=settings.focus*60, total=settings.focus*60;
+let pomosDone = 0, timerId=null, curSubject="", curTask="";
+
+const R=132, CIRC=2*Math.PI*R;
+$("#prog").style.strokeDasharray=CIRC;
+
+function renderModes(){
+  const m=$("#modes"); m.innerHTML="";
+  [["focus","Focus",settings.focus],["short","Short break",settings.short],["long","Long break",settings.long]].forEach(([k,label,mins])=>{
+    const b=document.createElement("button"); b.className="pill"+(mode===k?" on":"");
+    b.textContent=`${label} · ${mins}m`;
+    b.onclick=()=>{ switchMode(k); };
+    m.appendChild(b);
+  });
+}
+function switchMode(k){ mode=k; total=remaining=settings[k]*60; running=false; stop(); paint(); renderModes(); updateLabels(); }
+function updateLabels(){
+  $("#modeLabel").textContent = mode==="focus"?"Focus":"Break";
+  $("#dial").classList.toggle("break", mode!=="focus");
+  $("#sub").textContent = mode==="focus" ? (curSubject? S.subjectName(curSubject) : "deep work") : "recharge";
+}
+function paint(){
+  $("#time").textContent=S.fmtClock(remaining);
+  const frac = total? (total-remaining)/total : 0;
+  $("#prog").style.strokeDashoffset = CIRC*(1-frac);
+  $("#toggle").textContent = running? "❚❚" : "▶";
+  document.title = (running?`${S.fmtClock(remaining)} · `:"")+"Focus · StudySet";
+}
+function renderDots(){
+  const d=$("#dots"); d.innerHTML="";
+  for(let i=0;i<4;i++){ const el=document.createElement("i"); if(i<pomosDone%4|| (pomosDone%4===0&&pomosDone>0&&i<4&&false)) el.className="done"; if(i<(pomosDone%4)) el.className="done"; d.appendChild(el); }
+}
+function start(){ if(running) return; running=true; const t0=Date.now(); let base=remaining;
+  timerId=setInterval(()=>{ remaining=Math.max(0, base-Math.round((Date.now()-t0)/1000)); paint(); if(remaining<=0){ complete(); } },250);
+  paint();
+}
+function stop(){ running=false; clearInterval(timerId); timerId=null; paint(); }
+function toggle(){ running?stop():start(); }
+function reset(){ stop(); remaining=total; paint(); }
+function skip(){ stop(); if(mode==="focus"){ completeFocus(false); } nextMode(); }
+
+function complete(){
+  stop();
+  ding();
+  if(mode==="focus"){ completeFocus(true); }
+  nextMode(true);
+}
+function completeFocus(full){
+  const mins = Math.round((total - remaining)/60) || (full?settings.focus:0);
+  const actualMins = full? settings.focus : Math.round((total-remaining)/60);
+  if(actualMins<1) return;
+  pomosDone++;
+  // log
+  const log=S.Store.get("focusLog", {}); const t=S.todayISO();
+  log[t]=(log[t]||0)+actualMins; S.Store.set("focusLog", log);
+  const sessions=S.Store.get("focusSessions", []);
+  sessions.push({ date:t, mins:actualMins, subject:curSubject, task:curTask, ts:Date.now() });
+  S.Store.set("focusSessions", sessions);
+  renderDots(); renderStats();
+  if(full) S.toast(`Nice — ${actualMins} min logged 🌱`);
+}
+function nextMode(auto){
+  if(mode==="focus"){ mode = (pomosDone%4===0 && pomosDone>0) ? "long":"short"; }
+  else mode="focus";
+  total=remaining=settings[mode]*60; running=false; paint(); renderModes(); updateLabels();
+  if(auto && mode!=="focus") S.toast("Break time — step away for a bit");
+}
+function ding(){
+  try{ const a=new (window.AudioContext||window.webkitAudioContext)(); const o=a.createOscillator(), g=a.createGain();
+    o.connect(g); g.connect(a.destination); o.type="sine"; o.frequency.value=mode==="focus"?660:520;
+    g.gain.setValueAtTime(.001,a.currentTime); g.gain.exponentialRampToValueAtTime(.25,a.currentTime+.02);
+    g.gain.exponentialRampToValueAtTime(.001,a.currentTime+1.1); o.start(); o.stop(a.currentTime+1.15);
+  }catch(e){}
+}
+
+$("#toggle").onclick=toggle; $("#reset").onclick=reset; $("#skip").onclick=skip;
+document.addEventListener("keydown",(e)=>{ if(e.code==="Space" && e.target.tagName!=="SELECT"){ e.preventDefault(); toggle(); } });
+
+/* subject + task pickers */
+function renderPickers(){
+  const sw=$("#subjWrap"); sw.innerHTML=""; const sel=S.subjectSelect({allowNone:true,allLabel:""});
+  const sSel=S.subjectSelect({allowAll:false,allowNone:true}); sSel.value=curSubject; sw.appendChild(sSel);
+  sSel.onchange=()=>{ curSubject=sSel.value; updateLabels(); renderTaskPicker(); showDue(); };
+  renderTaskPicker();
+}
+function renderTaskPicker(){
+  const tw=$("#taskWrap"); tw.innerHTML="";
+  const tSel=document.createElement("select"); tSel.className="input"; tSel.add(new Option("— none —",""));
+  const ts=S.Store.get("tasks", []).filter(t=>!t.done && (!curSubject||t.subject===curSubject));
+  ts.forEach(t=> tSel.add(new Option(t.title, t.id)));
+  tSel.value=curTask; tw.appendChild(tSel);
+  tSel.onchange=()=> curTask=tSel.value;
+}
+function showDue(){
+  const decks=S.Store.get("decks", []);
+  let due=0; decks.forEach(d=> (d.subject===curSubject||!curSubject) && d.cards.forEach(c=>{ if(c.due<=S.todayISO()) due++; }));
+  const ts=S.Store.get("tasks", []).filter(t=>!t.done && t.due===S.todayISO() && (!curSubject||t.subject===curSubject)).length;
+  const bits=[]; if(due) bits.push(`<b>${due}</b> flashcards due`); if(ts) bits.push(`<b>${ts}</b> tasks due today`);
+  $("#dueHint").innerHTML = bits.length? "For this subject: "+bits.join(" · ")+"." : "Pick a subject to see what's due.";
+}
+
+/* stats */
+function renderStats(){
+  const log=S.Store.get("focusLog", {});
+  const today=log[S.todayISO()]||0;
+  let week=0; for(let i=0;i<7;i++){ const d=new Date(); d.setDate(d.getDate()-i); week+=log[d.toISOString().slice(0,10)]||0; }
+  $("#stToday").textContent=S.fmtDur(today);
+  $("#stWeek").textContent=S.fmtDur(week);
+  // streak
+  let streak=0; for(let i=0;i<400;i++){ const d=new Date(); d.setDate(d.getDate()-i); const k=d.toISOString().slice(0,10);
+    if((log[k]||0)>0) streak++; else if(i>0) break; else if(i===0 && !(log[k]>0)) { /*today none*/ } }
+  // recompute streak properly (consecutive days ending today or yesterday)
+  streak=0; let started=false;
+  for(let i=0;i<400;i++){ const d=new Date(); d.setDate(d.getDate()-i); const k=d.toISOString().slice(0,10); const has=(log[k]||0)>0;
+    if(i===0){ if(has){streak++; started=true;} }
+    else { if(has){ streak++; started=true; } else { if(started||i>1) break; else break; } } }
+  $("#stStreak").textContent=streak;
+  // heatmap: 28 days
+  const heat=$("#heat"); heat.innerHTML="";
+  const days=[]; for(let i=27;i>=0;i--){ const d=new Date(); d.setDate(d.getDate()-i); days.push(d.toISOString().slice(0,10)); }
+  const max=Math.max(60, ...days.map(k=>log[k]||0));
+  days.forEach(k=>{ const v=log[k]||0; const i=document.createElement("i");
+    if(v>0){ const a=.25+.75*Math.min(1,v/max); i.style.background=`color-mix(in srgb, var(--accent) ${Math.round(a*100)}%, var(--line-soft))`; }
+    i.title=`${S.fmtDate(k)}: ${S.fmtDur(v)}`; heat.appendChild(i); });
+}
+
+/* settings modal via long-press on mode? add gear */
+renderModes(); renderDots(); paint(); updateLabels(); renderPickers(); showDue(); renderStats();
+</script>
+</body>
+</html>

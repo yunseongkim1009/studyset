@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Planner · StudySet</title>
+<link rel="stylesheet" href="suite.css">
+<style>
+  .cols { display: grid; grid-template-columns: 1.1fr 1fr; gap: 22px; padding: 24px 0 60px; align-items: start; }
+  @media (max-width: 860px){ .cols { grid-template-columns: 1fr; } }
+
+  .exam { padding: 16px 18px; border-radius: var(--r); border: 1px solid var(--line); margin-bottom: 12px; position: relative; overflow: hidden; }
+  .exam::before { content:""; position:absolute; left:0; top:0; bottom:0; width:4px; background:var(--accent); }
+  .exam.soon::before { background: var(--rose); }
+  .exam .cd { font-family: var(--serif); font-size: 34px; font-weight: 800; line-height: 1; }
+  .exam .cd small { font-size: 13px; font-weight: 500; color: var(--muted); font-family: var(--sans); }
+  .exam h3 { margin: 0 0 2px; font-size: 17px; }
+  .seg { display:flex; height:7px; border-radius:999px; overflow:hidden; background:var(--line-soft); margin-top:10px; }
+  .seg i { display:block; height:100%; }
+
+  .task { display: flex; gap: 11px; align-items: flex-start; padding: 11px 12px; border-radius: var(--r-sm); border: 1px solid var(--line-soft); margin-bottom: 8px; background: var(--card); transition:.12s; }
+  .task:hover { border-color: var(--line); }
+  .task.done { opacity: .55; }
+  .task.done .tt { text-decoration: line-through; }
+  .check { width: 22px; height: 22px; border-radius: 7px; border: 2px solid var(--line); flex: none; cursor: pointer; display: grid; place-items: center; margin-top: 1px; transition: .12s; }
+  .check.on { background: var(--green); border-color: var(--green); color: #fff; }
+  .tt { font-weight: 600; font-size: 15px; }
+  .tmeta { font-size: 12px; color: var(--muted); display: flex; gap: 8px; margin-top: 2px; align-items:center; }
+  .due-soon { color: var(--rose); font-weight: 700; }
+  .plan-day { border-left: 2px solid var(--line); padding: 2px 0 14px 16px; position: relative; margin-left: 6px; }
+  .plan-day::before { content:""; position:absolute; left:-6px; top:4px; width:10px; height:10px; border-radius:50%; background:var(--accent); }
+  .plan-day.rest::before { background: var(--line); }
+</style>
+</head>
+<body>
+<script src="suite.js"></script>
+<div class="wrap">
+  <div class="row" style="padding:26px 0 4px"><div><div class="eyebrow">Exam planner</div><h1 class="h1">Plan &amp; countdown</h1></div></div>
+  <div class="cols">
+    <!-- LEFT: exams + plan -->
+    <section>
+      <div class="row" style="margin-bottom:12px"><h2 class="h2">Upcoming exams</h2><span class="spacer"></span>
+        <button class="btn sm primary" id="addExam">＋ Exam</button></div>
+      <div id="exams"></div>
+      <div class="card pad" style="margin-top:18px" id="planCard" hidden>
+        <div class="row" style="margin-bottom:8px"><h3 class="h2" id="planTitle">Study plan</h3><span class="spacer"></span>
+          <button class="icon-btn" id="closePlan" style="width:30px;height:30px">✕</button></div>
+        <div id="plan"></div>
+      </div>
+    </section>
+    <!-- RIGHT: tasks -->
+    <section>
+      <div class="row" style="margin-bottom:12px"><h2 class="h2">Study tasks</h2><span class="spacer"></span>
+        <button class="btn sm primary" id="addTask">＋ Task</button></div>
+      <div id="taskStats" class="card pad" style="margin-bottom:14px"></div>
+      <div id="tasks"></div>
+    </section>
+  </div>
+</div>
+
+<script>
+const S=window.Suite; S.topbar("planner");
+const $=(s,r=document)=>r.querySelector(s);
+
+function exams(){ return S.Store.get("exams", null) || seedExams(); }
+function saveExams(e){ S.Store.set("exams", e); }
+function tasks(){ return S.Store.get("tasks", null) || seedTasks(); }
+function saveTasks(t){ S.Store.set("tasks", t); }
+function seedExams(){
+  const d=new Date(); d.setDate(d.getDate()+9);
+  const d2=new Date(); d2.setDate(d2.getDate()+21);
+  const e=[
+    { id:S.uid("e"), name:"Biology Midterm", subject:"s_bio", date:d.toISOString().slice(0,10), topics:"Cells, Photosynthesis, Genetics" },
+    { id:S.uid("e"), name:"Calculus Test — Ch. 4", subject:"s_math", date:d2.toISOString().slice(0,10), topics:"Derivatives, Chain rule, Optimization" },
+  ]; saveExams(e); return e;
+}
+function seedTasks(){
+  const t=[
+    { id:S.uid("t"), title:"Review chapter 3 flashcards", subject:"s_bio", due:S.todayISO(), done:false, exam:null },
+    { id:S.uid("t"), title:"Do practice test #1", subject:"s_math", due:"", done:false, exam:null },
+    { id:S.uid("t"), title:"Summarize lecture notes", subject:"s_hist", due:"", done:true, exam:null },
+  ]; saveTasks(t); return t;
+}
+
+/* ---------- exams ---------- */
+function renderExams(){
+  const wrap=$("#exams"); wrap.innerHTML="";
+  const es=exams().slice().sort((a,b)=>a.date.localeCompare(b.date));
+  if(!es.length){ wrap.innerHTML=`<div class="card pad"><div class="empty"><div class="big">◱</div>No exams scheduled.<br>Add one to start a countdown.</div></div>`; return; }
+  es.forEach(e=>{
+    const days=S.daysBetween(S.todayISO(), e.date);
+    const past = days<0;
+    const soon = days>=0 && days<=3;
+    const el=document.createElement("div"); el.className="card exam"+(soon?" soon":"");
+    const col=S.subjectColor(e.subject);
+    el.innerHTML=`<div class="row" style="gap:14px;align-items:flex-start">
+        <div style="text-align:center;min-width:70px">
+          <div class="cd" style="color:${past?'var(--muted)':(soon?'var(--rose)':'var(--ink)')}">${past?"—":days}</div>
+          <small>${past?"passed":days===0?"today!":days===1?"day left":"days left"}</small>
+        </div>
+        <div class="grow">
+          <div class="row" style="gap:7px"><span class="sub-dot" style="background:${col}"></span><span class="muted" style="font-size:12px">${S.subjectName(e.subject)}</span></div>
+          <h3>${S.esc(e.name)}</h3>
+          <div class="muted" style="font-size:13px">${S.fmtDate(e.date)} · ${S.esc(e.topics||"")}</div>
+        </div>
+        <div class="stack" style="gap:6px">
+          <button class="btn sm" data-plan>Plan</button>
+          <div class="row" style="gap:4px">
+            <button class="icon-btn" style="width:28px;height:28px" data-edit>✎</button>
+            <button class="icon-btn" style="width:28px;height:28px" data-del>✕</button>
+          </div>
+        </div>
+      </div>`;
+    el.querySelector("[data-plan]").onclick=()=>showPlan(e);
+    el.querySelector("[data-edit]").onclick=()=>examModal(e);
+    el.querySelector("[data-del]").onclick=()=>S.confirmDialog(`Delete “${S.esc(e.name)}”?`,()=>{ saveExams(exams().filter(x=>x.id!==e.id)); renderExams(); });
+    wrap.appendChild(el);
+  });
+}
+function examModal(e){
+  const el=document.createElement("div"); const isNew=!e;
+  e=e||{ id:S.uid("e"), name:"", subject:"", date:"", topics:"" };
+  const sel=S.subjectSelect({allowNone:true,value:e.subject});
+  el.innerHTML=`<div class="field"><label>Exam name</label><input class="input" id="en" value="${S.esc(e.name)}" placeholder="e.g. Chemistry Final"></div>
+    <div class="row" style="gap:12px">
+      <div class="field grow"><label>Date</label><input class="input" type="date" id="ed" value="${e.date}"></div>
+      <div class="field grow"><label>Subject</label><span id="sw"></span></div>
+    </div>
+    <div class="field"><label>Topics to cover</label><input class="input" id="et" value="${S.esc(e.topics)}" placeholder="comma-separated"></div>`;
+  el.querySelector("#sw").appendChild(sel);
+  S.modal({ title:isNew?"New exam":"Edit exam", bodyEl:el, okText:"Save", onOk:()=>{
+    e.name=$("#en",el).value.trim(); e.date=$("#ed",el).value; e.subject=sel.value; e.topics=$("#et",el).value.trim();
+    if(!e.name||!e.date) return false;
+    const all=exams(); const i=all.findIndex(x=>x.id===e.id); if(i>=0)all[i]=e; else all.push(e);
+    saveExams(all); renderExams(); renderTaskStats();
+  }});
+}
+$("#addExam").onclick=()=>examModal(null);
+
+/* ---------- auto study plan ---------- */
+function showPlan(e){
+  const days=S.daysBetween(S.todayISO(), e.date);
+  const card=$("#planCard"); card.hidden=false;
+  $("#planTitle").textContent="Study plan · "+e.name;
+  $("#closePlan").onclick=()=>card.hidden=true;
+  const plan=$("#plan"); plan.innerHTML="";
+  if(days<0){ plan.innerHTML=`<div class="muted">This exam has passed.</div>`; return; }
+  if(days===0){ plan.innerHTML=`<div class="muted">It's today — quick review of your weakest topics, then rest.</div>`; }
+  const topics=(e.topics||"").split(",").map(s=>s.trim()).filter(Boolean);
+  const N=Math.min(days,14);
+  const activities=[
+    (t)=>`Read & take notes on <b>${t||"the material"}</b>`,
+    (t)=>`Make/review flashcards for <b>${t||"key terms"}</b>`,
+    (t)=>`Practice problems on <b>${t||"the topic"}</b>`,
+    (t)=>`Take a practice quiz on <b>${t||"everything so far"}</b>`,
+  ];
+  for(let i=0;i<N;i++){
+    const dd=new Date(); dd.setDate(dd.getDate()+i);
+    const iso=dd.toISOString().slice(0,10);
+    const dLeft=days-i;
+    const row=document.createElement("div");
+    let content;
+    if(dLeft===0){ row.className="plan-day rest"; content=`<b>Exam day.</b> Light review only. Good luck!`; }
+    else if(i>0 && i%4===3){ row.className="plan-day rest"; content=`<span class="muted">Rest / catch-up day</span>`; }
+    else if(dLeft<=2){ row.className="plan-day"; content=`<b>Final review:</b> ${activities[3]("")} + re-do missed questions`; }
+    else {
+      row.className="plan-day";
+      const topic = topics.length? topics[i%topics.length] : "";
+      content = activities[i%activities.length](topic);
+    }
+    row.innerHTML=`<div style="font-size:12px;color:var(--muted);font-weight:600">${dd.toLocaleDateString(undefined,{weekday:"short",month:"short",day:"numeric"})}${i===0?" · today":""}</div>
+      <div style="font-size:14.5px;margin-top:2px">${content}</div>`;
+    plan.appendChild(row);
+  }
+  const gen=document.createElement("button"); gen.className="btn sm block"; gen.style.marginTop="10px"; gen.textContent="＋ Add these as tasks";
+  gen.onclick=()=>{ generateTasks(e, topics); };
+  plan.appendChild(gen);
+  card.scrollIntoView({behavior:"smooth",block:"nearest"});
+}
+function generateTasks(e, topics){
+  const days=S.daysBetween(S.todayISO(), e.date);
+  const all=tasks(); let added=0;
+  const acts=["Read & note","Flashcards","Practice problems","Practice quiz"];
+  for(let i=0;i<Math.min(days,8);i++){
+    if(i%4===3) continue;
+    const dd=new Date(); dd.setDate(dd.getDate()+i);
+    const topic=topics.length?topics[i%topics.length]:e.name;
+    all.push({ id:S.uid("t"), title:`${acts[i%acts.length]}: ${topic}`, subject:e.subject, due:dd.toISOString().slice(0,10), done:false, exam:e.id });
+    added++;
+  }
+  saveTasks(all); renderTasks(); renderTaskStats(); S.toast(`Added ${added} tasks`);
+}
+
+/* ---------- tasks ---------- */
+function renderTasks(){
+  const wrap=$("#tasks"); wrap.innerHTML="";
+  const ts=tasks().slice().sort((a,b)=>{
+    if(a.done!==b.done) return a.done?1:-1;
+    if(!a.due) return 1; if(!b.due) return -1; return a.due.localeCompare(b.due);
+  });
+  if(!ts.length){ wrap.innerHTML=`<div class="card pad"><div class="empty"><div class="big">✓</div>No tasks. Add one, or generate them from an exam plan.</div></div>`; return; }
+  ts.forEach(t=>{
+    const el=document.createElement("div"); el.className="task"+(t.done?" done":"");
+    const overdue = t.due && !t.done && t.due < S.todayISO();
+    const dueTxt = t.due? (overdue?`overdue · ${S.fmtDate(t.due)}`:S.relDay(t.due)+" · "+S.fmtDate(t.due)) : "";
+    el.innerHTML=`<div class="check ${t.done?"on":""}">${t.done?"✓":""}</div>
+      <div class="grow"><div class="tt">${S.esc(t.title)}</div>
+      <div class="tmeta"><span class="sub-dot" style="background:${S.subjectColor(t.subject)}"></span>${S.subjectName(t.subject)}
+        ${dueTxt?`<span class="${overdue?'due-soon':''}">· ${dueTxt}</span>`:""}</div></div>
+      <button class="icon-btn" style="width:28px;height:28px" data-del>✕</button>`;
+    el.querySelector(".check").onclick=()=>{ t.done=!t.done; saveTasks(tasks()); renderTasks(); renderTaskStats(); };
+    el.querySelector("[data-del]").onclick=()=>{ saveTasks(tasks().filter(x=>x.id!==t.id)); renderTasks(); renderTaskStats(); };
+    wrap.appendChild(el);
+  });
+}
+function renderTaskStats(){
+  const ts=tasks(); const done=ts.filter(t=>t.done).length;
+  const today=ts.filter(t=>!t.done && t.due===S.todayISO()).length;
+  const overdue=ts.filter(t=>!t.done && t.due && t.due<S.todayISO()).length;
+  const pct=ts.length?Math.round(done/ts.length*100):0;
+  $("#taskStats").innerHTML=`<div class="row" style="gap:18px;flex-wrap:wrap">
+    <div><div style="font-size:24px;font-weight:700;font-family:var(--serif)">${today}</div><div class="muted" style="font-size:12px">due today</div></div>
+    <div><div style="font-size:24px;font-weight:700;font-family:var(--serif);color:${overdue?'var(--rose)':'inherit'}">${overdue}</div><div class="muted" style="font-size:12px">overdue</div></div>
+    <div class="grow" style="min-width:120px"><div class="row" style="margin-bottom:5px"><span class="muted" style="font-size:12px">${done}/${ts.length} done</span><span class="spacer"></span><span class="muted" style="font-size:12px">${pct}%</span></div><div class="bar"><i style="width:${pct}%"></i></div></div>
+  </div>`;
+}
+function taskModal(){
+  const el=document.createElement("div"); const sel=S.subjectSelect({allowNone:true});
+  el.innerHTML=`<div class="field"><label>Task</label><input class="input" id="tt" placeholder="e.g. Finish problem set 4"></div>
+    <div class="row" style="gap:12px"><div class="field grow"><label>Due (optional)</label><input class="input" type="date" id="td"></div>
+    <div class="field grow"><label>Subject</label><span id="sw"></span></div></div>`;
+  el.querySelector("#sw").appendChild(sel);
+  S.modal({ title:"New task", bodyEl:el, okText:"Add", onOk:()=>{
+    const title=$("#tt",el).value.trim(); if(!title) return false;
+    tasks().push? null:null;
+    const all=tasks(); all.push({ id:S.uid("t"), title, subject:sel.value, due:$("#td",el).value, done:false, exam:null });
+    saveTasks(all); renderTasks(); renderTaskStats();
+  }});
+  setTimeout(()=>$("#tt",el).focus(),50);
+}
+$("#addTask").onclick=taskModal;
+
+renderExams(); renderTasks(); renderTaskStats();
+</script>
+</body>
+</html>

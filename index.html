@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>StudySet — your study set</title>
+<link rel="stylesheet" href="suite.css">
+<style>
+  .hero { padding: 34px 0 18px; }
+  .hero .h1 { font-size: clamp(30px, 5vw, 48px); }
+  .greet { color: var(--accent); font-weight: 700; }
+
+  .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin: 8px 0 30px; }
+  .kpi { padding: 18px; display:flex; flex-direction:column; gap:2px; position:relative; overflow:hidden; text-decoration:none; color:inherit; transition:.15s; }
+  .kpi:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); border-color: var(--accent); }
+  .kpi .n { font-family: var(--serif); font-size: 38px; font-weight: 800; line-height: 1; }
+  .kpi .l { color: var(--muted); font-size: 13px; }
+  .kpi .ic { position:absolute; right:14px; top:12px; font-size:20px; opacity:.5; }
+  .kpi.alert .n { color: var(--rose); }
+
+  .apps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .app-card { padding: 22px; text-decoration: none; color: inherit; display:flex; flex-direction:column; gap:8px; transition:.16s; position:relative; overflow:hidden; }
+  .app-card:hover { transform: translateY(-3px); box-shadow: var(--shadow-lg); border-color: var(--accent); }
+  .app-card .glyph { width:46px; height:46px; border-radius:13px; display:grid; place-items:center; font-size:22px; color:var(--accent-ink);
+    background: linear-gradient(145deg, var(--accent), var(--accent-2)); box-shadow: var(--shadow-sm); }
+  .app-card h3 { margin:6px 0 0; font-family:var(--serif); font-size:20px; }
+  .app-card p { margin:0; color: var(--muted); font-size:14px; line-height:1.45; }
+  .app-card .badge2 { position:absolute; right:16px; top:16px; }
+
+  .side { display:grid; grid-template-columns: 1.4fr 1fr; gap:22px; margin-top:30px; align-items:start; }
+  .activity-item { display:flex; gap:10px; align-items:center; padding:9px 0; border-bottom:1px solid var(--line-soft); font-size:14px; }
+  .activity-item .ai { width:30px;height:30px;border-radius:9px;display:grid;place-items:center;background:var(--card-2);border:1px solid var(--line-soft);flex:none; }
+  .subj-chip { display:inline-flex;align-items:center;gap:6px;padding:5px 11px;border-radius:999px;border:1px solid var(--line);background:var(--card);font-size:13px;font-weight:600;margin:0 6px 6px 0; }
+  .subj-chip button { border:none;background:transparent;color:var(--muted);cursor:pointer;padding:0 0 0 2px;font-size:14px; }
+
+  @media (max-width: 900px){ .kpis{grid-template-columns:repeat(2,1fr);} .apps{grid-template-columns:1fr 1fr;} .side{grid-template-columns:1fr;} }
+  @media (max-width: 560px){ .apps{grid-template-columns:1fr;} }
+</style>
+</head>
+<body>
+<script src="suite.js"></script>
+<div class="wrap">
+  <header class="hero">
+    <div class="eyebrow">StudySet · your complete study toolkit</div>
+    <h1 class="h1"><span class="greet" id="greet">Hello</span> — <span id="line">let's get to work.</span></h1>
+  </header>
+
+  <div class="kpis" id="kpis"></div>
+
+  <div class="row" style="margin-bottom:14px"><h2 class="h2">Your study tools</h2></div>
+  <div class="apps" id="apps"></div>
+
+  <div class="side">
+    <div class="card pad">
+      <div class="row" style="margin-bottom:6px"><h3 class="h2">Recent activity</h3></div>
+      <div id="activity"></div>
+    </div>
+    <div class="card pad">
+      <div class="row" style="margin-bottom:12px"><h3 class="h2">Subjects</h3><span class="spacer"></span>
+        <button class="btn sm primary" id="addSub">＋</button></div>
+      <div id="subjects"></div>
+      <div class="hr"></div>
+      <div class="muted" style="font-size:12.5px;line-height:1.6">Subjects are shared across every app — colour-coded so your decks, notes, quizzes and tasks all line up.</div>
+    </div>
+  </div>
+
+  <footer style="text-align:center;padding:50px 0 30px;color:var(--muted);font-size:13px">
+    StudySet · everything saves locally in your browser · <a href="#" id="reset" style="color:var(--muted)">reset demo data</a>
+  </footer>
+</div>
+
+<script>
+const S=window.Suite; S.topbar("index");
+const $=(s,r=document)=>r.querySelector(s);
+
+/* greeting */
+(function(){
+  const h=new Date().getHours();
+  $("#greet").textContent = h<5?"Late night":h<12?"Good morning":h<18?"Good afternoon":"Good evening";
+  const focusToday=(S.Store.get("focusLog",{})[S.todayISO()])||0;
+  $("#line").textContent = focusToday>0? `${S.fmtDur(focusToday)} focused today — keep it going.` : "let's get to work.";
+})();
+
+/* KPIs */
+function renderKPIs(){
+  // cards due
+  let cardsDue=0; S.Store.get("decks",[]).forEach(d=>d.cards.forEach(c=>{ if((c.due||"9999")<=S.todayISO()) cardsDue++; }));
+  // next exam
+  const exams=S.Store.get("exams",[]).filter(e=>e.date>=S.todayISO()).sort((a,b)=>a.date.localeCompare(b.date));
+  const next=exams[0]; const nd=next? S.daysBetween(S.todayISO(),next.date):null;
+  // tasks today / overdue
+  const tasks=S.Store.get("tasks",[]);
+  const todayTasks=tasks.filter(t=>!t.done && (t.due===S.todayISO()||(t.due&&t.due<S.todayISO()))).length;
+  // focus week
+  const log=S.Store.get("focusLog",{}); let week=0; for(let i=0;i<7;i++){ const d=new Date(); d.setDate(d.getDate()-i); week+=log[d.toISOString().slice(0,10)]||0; }
+
+  const kpis=[
+    { n:cardsDue, l:"flashcards due", ic:"▤", href:"flashcards.html", alert:false },
+    { n: next? nd : "—", l: next? `days to ${next.name.length>16?next.name.slice(0,15)+"…":next.name}` : "no exams set", ic:"◱", href:"planner.html", alert: next&&nd<=3 },
+    { n:todayTasks, l:"tasks to do", ic:"◱", href:"planner.html", alert: todayTasks>0 },
+    { n:S.fmtDur(week), l:"focused this week", ic:"◉", href:"focus.html", alert:false },
+  ];
+  const wrap=$("#kpis"); wrap.innerHTML="";
+  kpis.forEach(k=>{ const a=document.createElement("a"); a.className="card kpi"+(k.alert?" alert":""); a.href=k.href;
+    a.innerHTML=`<span class="ic">${k.ic}</span><span class="n">${k.n}</span><span class="l">${k.l}</span>`; wrap.appendChild(a); });
+}
+
+/* app cards */
+const APP_INFO=[
+  { file:"flashcards.html", glyph:"▤", name:"Flashcards", desc:"Spaced-repetition decks that resurface cards right before you forget them." },
+  { file:"quiz.html", glyph:"◈", name:"Quizzes", desc:"Build practice tests, take them timed, and review every miss." },
+  { file:"notes.html", glyph:"▦", name:"Notes", desc:"Cornell-style notes with cues, notes and a one-line summary." },
+  { file:"planner.html", glyph:"◱", name:"Planner", desc:"Exam countdowns, task board, and auto-built study schedules." },
+  { file:"focus.html", glyph:"◉", name:"Focus", desc:"Pomodoro timer that logs real study minutes and streaks." },
+  { file:"reference.html", glyph:"❋", name:"Sheets", desc:"Formula sheets & cheat sheets — collapsible, printable." },
+];
+function renderApps(){
+  const wrap=$("#apps"); wrap.innerHTML="";
+  const decks=S.Store.get("decks",[]), quizzes=S.Store.get("quizzes",[]), notes=S.Store.get("notes",[]), sheets=S.Store.get("sheets",[]);
+  const counts={ "flashcards.html":decks.reduce((a,d)=>a+d.cards.length,0)+" cards", "quiz.html":quizzes.length+" quizzes",
+    "notes.html":notes.length+" notes", "reference.html":sheets.length+" sheets" };
+  APP_INFO.forEach(a=>{ const el=document.createElement("a"); el.className="card app-card"; el.href=a.file;
+    el.innerHTML=`<div class="glyph">${a.glyph}</div><h3>${a.name}</h3><p>${a.desc}</p>
+      ${counts[a.file]?`<span class="badge2 badge">${counts[a.file]}</span>`:""}`; wrap.appendChild(el); });
+}
+
+/* activity feed */
+function renderActivity(){
+  const items=[];
+  (S.Store.get("focusSessions",[])).slice(-20).forEach(s=> items.push({ ts:s.ts, ic:"◉", text:`Focused ${S.fmtDur(s.mins)}${s.subject?" on "+S.subjectName(s.subject):""}` }));
+  (S.Store.get("quizResults",[])).forEach(r=> items.push({ ts: r.ts || new Date(r.date+"T12:00").getTime(), ic:"◈", text:`Scored ${r.pct}% on ${r.name}` }));
+  const rl=S.Store.get("reviewLog",{}); Object.keys(rl).forEach(d=> items.push({ ts:new Date(d+"T09:00").getTime(), ic:"▤", text:`Reviewed ${rl[d]} flashcards` }));
+  (S.Store.get("notes",[])).forEach(n=> items.push({ ts:n.updated, ic:"▦", text:`Edited note “${n.title||"Untitled"}”` }));
+  items.sort((a,b)=>b.ts-a.ts);
+  const wrap=$("#activity"); wrap.innerHTML="";
+  if(!items.length){ wrap.innerHTML=`<div class="empty" style="padding:24px"><div class="big">✎</div>No activity yet — open any tool to begin.</div>`; return; }
+  items.slice(0,8).forEach(it=>{ const el=document.createElement("div"); el.className="activity-item";
+    const when=timeAgo(it.ts);
+    el.innerHTML=`<span class="ai">${it.ic}</span><span class="grow">${S.esc(it.text)}</span><span class="muted" style="font-size:12px">${when}</span>`; wrap.appendChild(el); });
+}
+function timeAgo(ts){ const s=(Date.now()-ts)/1000; if(s<60)return"just now"; if(s<3600)return Math.floor(s/60)+"m ago"; if(s<86400)return Math.floor(s/3600)+"h ago"; return Math.floor(s/86400)+"d ago"; }
+
+/* subjects manager */
+function renderSubjects(){
+  const wrap=$("#subjects"); wrap.innerHTML="";
+  S.subjects().forEach(s=>{ const c=document.createElement("span"); c.className="subj-chip";
+    c.innerHTML=`<span class="sub-dot" style="background:${s.color}"></span>${S.esc(s.name)}<button title="Remove">✕</button>`;
+    c.querySelector("button").onclick=()=>{ const list=S.subjects().filter(x=>x.id!==s.id); S.Store.set("subjects",list); renderSubjects(); renderKPIs(); };
+    wrap.appendChild(c); });
+}
+$("#addSub").onclick=()=>{ const el=document.createElement("div");
+  el.innerHTML=`<div class="field"><label>Subject name</label><input class="input" id="sn" placeholder="e.g. Physics"></div>`;
+  S.modal({ title:"Add subject", bodyEl:el, okText:"Add", onOk:()=>{ const v=$("#sn",el).value.trim(); if(!v)return false; S.addSubject(v); renderSubjects(); } });
+  setTimeout(()=>$("#sn",el).focus(),50);
+};
+
+$("#reset").onclick=(e)=>{ e.preventDefault(); S.confirmDialog("Clear all StudySet data and reload the demo? This can't be undone.", ()=>{
+  Object.keys(localStorage).filter(k=>k.startsWith("studyset:")).forEach(k=>localStorage.removeItem(k));
+  location.reload();
+}, "Reset"); };
+
+renderKPIs(); renderApps(); renderActivity(); renderSubjects();
+</script>
+</body>
+</html>

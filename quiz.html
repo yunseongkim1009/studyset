@@ -1,0 +1,298 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Quizzes · StudySet</title>
+<link rel="stylesheet" href="suite.css">
+<style>
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px,1fr)); gap: 16px; }
+  .quiz-card { padding: 18px; display: flex; flex-direction: column; gap: 6px; cursor: pointer; transition: .15s; }
+  .quiz-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); border-color: var(--accent); }
+  .quiz-card h3 { margin: 0; font-family: var(--serif); font-size: 19px; }
+  .best { margin-top: auto; }
+
+  .qbuild { display: flex; flex-direction: column; gap: 12px; }
+  .qitem { border: 1px solid var(--line); border-radius: var(--r); padding: 14px; background: var(--card-2); }
+  .opt-row { display: flex; gap: 8px; align-items: center; margin: 6px 0; }
+  .opt-row .input { flex: 1; }
+  .correct-radio { width: 20px; height: 20px; accent-color: var(--green); flex: none; }
+
+  /* take mode */
+  .take-head { display: flex; align-items: center; gap: 14px; margin-bottom: 8px; }
+  .timer { font-family: var(--mono); font-weight: 700; font-size: 18px; }
+  .qbox { max-width: 640px; margin: 0 auto; }
+  .prompt { font-family: var(--serif); font-size: clamp(20px,3vw,27px); line-height: 1.3; margin: 10px 0 22px; }
+  .choice { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; padding: 15px 16px;
+            border: 1px solid var(--line); border-radius: var(--r); background: var(--card); cursor: pointer;
+            margin-bottom: 10px; transition: .12s; font-size: 16px; }
+  .choice:hover { border-color: var(--accent); background: var(--accent-wash); }
+  .choice.sel { border-color: var(--accent); background: var(--accent-wash); }
+  .choice.correct { border-color: var(--green); background: color-mix(in srgb, var(--green) 14%, var(--card)); }
+  .choice.wrong { border-color: var(--rose); background: color-mix(in srgb, var(--rose) 14%, var(--card)); }
+  .choice .key { width: 28px; height: 28px; border-radius: 8px; border: 1px solid var(--line); display: grid; place-items: center; font-weight: 700; font-size: 13px; flex: none; }
+  .ring { --sz: 150px; width: var(--sz); height: var(--sz); border-radius: 50%; display: grid; place-items: center;
+          background: conic-gradient(var(--accent) calc(var(--p)*1%), var(--line-soft) 0); margin: 0 auto; }
+  .ring > div { width: calc(var(--sz) - 22px); height: calc(var(--sz) - 22px); border-radius: 50%; background: var(--card);
+                display: grid; place-items: center; flex-direction: column; }
+  .review-q { border-left: 3px solid var(--line); padding: 4px 0 4px 14px; margin-bottom: 16px; }
+  .review-q.ok { border-color: var(--green); } .review-q.no { border-color: var(--rose); }
+</style>
+</head>
+<body>
+<script src="suite.js"></script>
+<div class="wrap" style="padding:26px 0 60px">
+  <main id="main"></main>
+</div>
+
+<script>
+const S = window.Suite;
+S.topbar("quiz");
+const $ = (s,r=document)=>r.querySelector(s);
+
+function quizzes(){ return S.Store.get("quizzes", null) || seed(); }
+function save(q){ S.Store.set("quizzes", q); }
+function results(){ return S.Store.get("quizResults", []); }
+function seed(){
+  const q = [{
+    id: S.uid("q"), name: "Photosynthesis Basics", subject: "s_bio",
+    questions: [
+      { id: S.uid("i"), prompt: "Where in the plant cell does photosynthesis primarily occur?", options: ["Mitochondria","Chloroplast","Nucleus","Ribosome"], correct: 1 },
+      { id: S.uid("i"), prompt: "Which gas is released as a by-product of photosynthesis?", options: ["Carbon dioxide","Nitrogen","Oxygen","Hydrogen"], correct: 2 },
+      { id: S.uid("i"), prompt: "Photosynthesis converts light energy into chemical energy stored in glucose.", options: ["True","False"], correct: 0 },
+      { id: S.uid("i"), prompt: "What pigment gives leaves their green colour and absorbs light?", options: ["Carotene","Melanin","Chlorophyll","Xanthophyll"], correct: 2 },
+    ],
+  }];
+  save(q); return q;
+}
+
+let editing = null, taking = null;
+
+/* =============== LIBRARY =============== */
+function renderLibrary(){
+  const qs = quizzes();
+  const res = results();
+  const bestOf = (qid)=>{ const r = res.filter(x=>x.quizId===qid); return r.length? Math.max(...r.map(x=>x.pct)) : null; };
+  $("#main").innerHTML = `
+    <div class="row" style="margin-bottom:20px">
+      <div><div class="eyebrow">Practice tests</div><h1 class="h1">Quizzes</h1></div>
+      <span class="spacer"></span>
+      <button class="btn primary lg" id="new">＋ New quiz</button>
+    </div>
+    ${qs.length? `<div class="grid" id="grid"></div>` :
+      `<div class="card pad"><div class="empty"><div class="big">◈</div>No quizzes yet.<br>Build one, or import a flashcard deck.</div></div>`}`;
+  $("#new").onclick = ()=> startEdit(null);
+  if(!qs.length) return;
+  const grid = $("#grid");
+  qs.forEach(q=>{
+    const best = bestOf(q.id);
+    const el = document.createElement("div"); el.className = "card quiz-card";
+    el.innerHTML = `<div class="row" style="gap:8px"><span class="sub-dot" style="background:${S.subjectColor(q.subject)}"></span>
+        <span class="chip" style="border:none;background:transparent;padding:0">${S.subjectName(q.subject)}</span></div>
+      <h3>${S.esc(q.name)}</h3>
+      <div class="muted" style="font-size:13px">${q.questions.length} questions</div>
+      <div class="best row" style="gap:8px;padding-top:6px">
+        ${best!=null? `<span class="badge" style="background:color-mix(in srgb,var(--green) 18%,transparent);color:var(--green)">Best ${best}%</span>`:`<span class="muted" style="font-size:12px">Not attempted</span>`}
+      </div>
+      <div class="row" style="gap:8px;margin-top:8px">
+        <button class="btn sm primary grow" data-take>Take</button>
+        <button class="icon-btn" style="width:34px;height:34px" data-edit>✎</button>
+        <button class="icon-btn" style="width:34px;height:34px" data-del>✕</button>
+      </div>`;
+    el.querySelector("[data-take]").onclick = ()=> startTake(q);
+    el.querySelector("[data-edit]").onclick = ()=> startEdit(q);
+    el.querySelector("[data-del]").onclick = ()=> S.confirmDialog(`Delete “${S.esc(q.name)}”?`, ()=>{
+      save(quizzes().filter(x=>x.id!==q.id)); renderLibrary(); S.toast("Quiz deleted");
+    });
+    grid.appendChild(el);
+  });
+}
+
+/* =============== BUILDER =============== */
+function startEdit(q){
+  editing = q ? JSON.parse(JSON.stringify(q)) : { id:S.uid("q"), name:"", subject:"", questions:[ blankQ() ] };
+  renderEdit();
+}
+function blankQ(){ return { id:S.uid("i"), prompt:"", options:["",""], correct:0 }; }
+function renderEdit(){
+  const e = editing;
+  $("#main").innerHTML = `
+    <div class="row" style="margin-bottom:18px">
+      <button class="btn ghost" id="back">‹ Cancel</button><span class="spacer"></span>
+      <button class="btn" id="importDeck">⇩ Import deck</button>
+      <button class="btn primary" id="saveQ">Save quiz</button>
+    </div>
+    <div class="card pad" style="margin-bottom:16px">
+      <div class="row" style="gap:12px;flex-wrap:wrap">
+        <div class="field grow" style="min-width:220px"><label>Quiz title</label><input class="input" id="qn" value="${S.esc(e.name)}" placeholder="e.g. Chapter 5 Practice Test"></div>
+        <div class="field" id="subWrap" style="min-width:180px"><label>Subject</label></div>
+      </div>
+    </div>
+    <div class="qbuild" id="items"></div>
+    <button class="btn block" id="addItem" style="margin-top:14px">＋ Add question</button>`;
+  const sel = S.subjectSelect({ allowNone:true, value:e.subject }); sel.id="qs"; $("#subWrap").appendChild(sel);
+  $("#back").onclick = renderLibrary;
+  $("#saveQ").onclick = commit;
+  $("#addItem").onclick = ()=>{ e.questions.push(blankQ()); renderItems(); };
+  $("#importDeck").onclick = importDeck;
+  renderItems();
+}
+function renderItems(){
+  const wrap = $("#items"); wrap.innerHTML = "";
+  editing.questions.forEach((q,qi)=>{
+    const el = document.createElement("div"); el.className="qitem";
+    el.innerHTML = `<div class="row" style="margin-bottom:8px"><span class="badge">Q${qi+1}</span><span class="spacer"></span>
+      <button class="icon-btn" style="width:30px;height:30px" data-tf title="True/False">T/F</button>
+      <button class="icon-btn" style="width:30px;height:30px" data-rm title="Remove">✕</button></div>
+      <textarea class="textarea" data-p placeholder="Question prompt…" style="min-height:52px;margin-bottom:6px">${S.esc(q.prompt)}</textarea>
+      <div class="muted" style="font-size:12px;margin-bottom:4px">Select the ⦿ for the correct answer</div>
+      <div data-opts></div>
+      <button class="btn sm ghost" data-addopt style="margin-top:4px">＋ option</button>`;
+    el.querySelector("[data-p]").oninput = (ev)=> q.prompt = ev.target.value;
+    el.querySelector("[data-rm]").onclick = ()=>{ if(editing.questions.length>1){editing.questions.splice(qi,1); renderItems();} };
+    el.querySelector("[data-tf]").onclick = ()=>{ q.options=["True","False"]; q.correct=0; renderItems(); };
+    el.querySelector("[data-addopt]").onclick = ()=>{ if(q.options.length<6){q.options.push(""); renderItems();} };
+    const opts = el.querySelector("[data-opts]");
+    q.options.forEach((o,oi)=>{
+      const r = document.createElement("div"); r.className="opt-row";
+      r.innerHTML = `<input type="radio" class="correct-radio" name="c${q.id}" ${q.correct===oi?"checked":""}>
+        <input class="input" value="${S.esc(o)}" placeholder="Option ${oi+1}">
+        ${q.options.length>2?`<button class="icon-btn" style="width:30px;height:30px" data-x>✕</button>`:""}`;
+      r.querySelector("input[type=radio]").onchange = ()=> q.correct=oi;
+      r.querySelector(".input").oninput = (ev)=> q.options[oi]=ev.target.value;
+      const x = r.querySelector("[data-x]"); if(x) x.onclick=()=>{ q.options.splice(oi,1); if(q.correct>=q.options.length)q.correct=0; renderItems(); };
+      opts.appendChild(r);
+    });
+    wrap.appendChild(el);
+  });
+}
+function commit(){
+  const e = editing;
+  e.name = $("#qn").value.trim(); e.subject = $("#qs").value;
+  if(!e.name) return S.toast("Give the quiz a title");
+  e.questions = e.questions.filter(q=> q.prompt.trim() && q.options.filter(o=>o.trim()).length>=2);
+  if(!e.questions.length) return S.toast("Add at least one complete question");
+  const all = quizzes(); const i = all.findIndex(x=>x.id===e.id);
+  if(i>=0) all[i]=e; else all.unshift(e);
+  save(all); editing=null; renderLibrary(); S.toast("Quiz saved");
+}
+function importDeck(){
+  const decks = S.Store.get("decks", []);
+  if(!decks.length) return S.toast("No flashcard decks to import");
+  const el = document.createElement("div");
+  el.innerHTML = `<p class="muted" style="margin:0 0 6px">Turn a deck's cards into questions. Each card's answer becomes the correct choice, mixed with distractors from other cards.</p>`;
+  const sel = document.createElement("select"); sel.className="input";
+  decks.forEach(d=> sel.add(new Option(`${d.name} (${d.cards.length})`, d.id)));
+  el.appendChild(sel);
+  S.modal({ title:"Import from flashcards", bodyEl:el, okText:"Import", onOk:()=>{
+    const d = decks.find(x=>x.id===sel.value); if(!d||!d.cards.length) return false;
+    const pool = d.cards.map(c=>c.back);
+    d.cards.forEach(c=>{
+      const distract = pool.filter(x=>x!==c.back).sort(()=>Math.random()-.5).slice(0,3);
+      const opts = [c.back, ...distract].sort(()=>Math.random()-.5);
+      editing.questions.push({ id:S.uid("i"), prompt:c.front, options:opts, correct:opts.indexOf(c.back) });
+    });
+    editing.questions = editing.questions.filter(q=>q.prompt.trim());
+    if(!editing.name) { editing.name = d.name + " Quiz"; editing.subject = d.subject||""; }
+    renderEdit(); S.toast(`Imported ${d.cards.length} questions`);
+  }});
+}
+
+/* =============== TAKE =============== */
+function startTake(q){
+  const order = q.questions.map((_,i)=>i).sort(()=>Math.random()-.5);
+  taking = { quiz:q, order, i:0, answers:{}, start:Date.now(), locked:false };
+  renderTake();
+}
+function renderTake(){
+  const t = taking, q = t.quiz;
+  if(t.i>=t.order.length) return renderScore();
+  const qi = t.order[t.i]; const item = q.questions[qi];
+  const chosen = t.answers[qi];
+  const letters = "ABCDEF";
+  $("#main").innerHTML = `
+    <div class="take-head">
+      <button class="btn sm ghost" id="quit">‹ Quit</button>
+      <span class="spacer"></span>
+      <span class="timer" id="timer">0:00</span>
+    </div>
+    <div class="bar" style="margin-bottom:22px"><i style="width:${Math.round(t.i/t.order.length*100)}%"></i></div>
+    <div class="qbox">
+      <div class="chip">Question ${t.i+1} of ${t.order.length}</div>
+      <div class="prompt">${S.esc(item.prompt)}</div>
+      <div id="choices"></div>
+      <div class="row" style="justify-content:space-between;margin-top:14px">
+        <button class="btn ghost" id="skip">Skip</button>
+        <button class="btn primary" id="next" ${chosen==null?"disabled":""}>${t.i===t.order.length-1?"Finish":"Next ›"}</button>
+      </div>
+    </div>`;
+  const ch = $("#choices");
+  item.options.forEach((o,oi)=>{
+    const b = document.createElement("button"); b.className="choice"+(chosen===oi?" sel":"");
+    b.innerHTML = `<span class="key">${letters[oi]}</span><span>${S.esc(o)}</span>`;
+    b.onclick = ()=>{ t.answers[qi]=oi; renderTake(); };
+    ch.appendChild(b);
+  });
+  $("#next").onclick = ()=>{ t.i++; renderTake(); };
+  $("#skip").onclick = ()=>{ t.i++; renderTake(); };
+  $("#quit").onclick = ()=> S.confirmDialog("Quit this attempt? Progress won't be saved.", ()=>{ taking=null; renderLibrary(); }, "Quit");
+  tick();
+}
+let timerRAF;
+function tick(){
+  const el = $("#timer"); if(!el||!taking){ return; }
+  el.textContent = S.fmtClock((Date.now()-taking.start)/1000);
+  cancelAnimationFrame(timerRAF);
+  timerRAF = requestAnimationFrame(()=> setTimeout(tick, 250));
+}
+function renderScore(){
+  const t = taking, q = t.quiz;
+  let correct = 0;
+  q.questions.forEach((item,qi)=>{ if(t.answers[qi]===item.correct) correct++; });
+  const pct = Math.round(correct/q.questions.length*100);
+  const secs = Math.round((Date.now()-t.start)/1000);
+  // save result
+  const res = results(); res.push({ id:S.uid("r"), quizId:q.id, name:q.name, subject:q.subject, pct, correct, total:q.questions.length, date:S.todayISO(), secs, ts:Date.now() });
+  S.Store.set("quizResults", res);
+  const grade = pct>=90?"Excellent":pct>=75?"Solid":pct>=60?"Getting there":"Keep studying";
+  const letters="ABCDEF";
+  $("#main").innerHTML = `
+    <div class="card pad fade" style="text-align:center;padding:36px 24px 26px;max-width:560px;margin:0 auto 20px">
+      <div class="ring" style="--p:${pct}"><div><div style="font-size:34px;font-weight:800;font-family:var(--serif)">${pct}%</div><div class="muted" style="font-size:12px">${correct}/${q.questions.length}</div></div></div>
+      <h2 class="h1" style="margin:16px 0 4px">${grade}</h2>
+      <p class="muted">Finished in ${S.fmtClock(secs)}</p>
+      <div class="row" style="justify-content:center;gap:10px;margin-top:12px">
+        <button class="btn primary" id="retry">Retry</button>
+        <button class="btn" id="lib">All quizzes</button>
+      </div>
+    </div>
+    <div class="card pad" style="max-width:640px;margin:0 auto">
+      <h3 class="h2" style="margin-bottom:12px">Review</h3>
+      <div id="rev"></div>
+    </div>`;
+  $("#retry").onclick = ()=> startTake(q);
+  $("#lib").onclick = renderLibrary;
+  const rev = $("#rev");
+  q.questions.forEach((item,qi)=>{
+    const ans = t.answers[qi]; const ok = ans===item.correct;
+    const d = document.createElement("div"); d.className="review-q "+(ok?"ok":"no");
+    d.innerHTML = `<div style="font-weight:600;margin-bottom:4px">${S.esc(item.prompt)}</div>
+      <div style="font-size:14px;color:var(--green)">✓ ${S.esc(item.options[item.correct])}</div>
+      ${!ok? `<div style="font-size:14px;color:var(--rose)">✗ ${ans==null?"skipped":S.esc(item.options[ans])}</div>`:""}`;
+    rev.appendChild(d);
+  });
+  taking=null;
+}
+document.addEventListener("keydown",(e)=>{
+  if(!taking||taking.i>=taking.order.length) return;
+  const item = taking.quiz.questions[taking.order[taking.i]];
+  const k = e.key.toUpperCase();
+  const idx = "ABCDEF".indexOf(k);
+  if(idx>=0 && idx<item.options.length){ taking.answers[taking.order[taking.i]]=idx; renderTake(); }
+  else if(e.key==="Enter" && taking.answers[taking.order[taking.i]]!=null){ taking.i++; renderTake(); }
+});
+
+renderLibrary();
+</script>
+</body>
+</html>
